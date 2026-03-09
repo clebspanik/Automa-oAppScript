@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    :root {
+      --primary: #0061ff; --secondary: #60efff;
+      --green: #00b894; --red: #ff7675; --selected: #0984e3;
+    }
+    body { font-family: 'Poppins', sans-serif; background: linear-gradient(135deg, var(--primary), var(--secondary)); background-attachment: fixed; padding: 20px; margin: 0; min-height: 100vh; }
+    .container { max-width: 500px; margin: 0 auto; background: rgba(255, 255, 255, 0.96); padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+    h2 { color: var(--primary); text-align: center; margin-bottom: 25px; font-size: 22px; font-weight: 700; }
+    .input-group { margin-bottom: 18px; }
+    label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; color: var(--primary); }
+    input, textarea { width: 100%; padding: 12px; border: 2px solid #e1e8ef; border-radius: 12px; font-size: 15px; box-sizing: border-box; outline: none; font-family: inherit; transition: 0.3s; }
+    input:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 8px rgba(0,97,255,0.1); }
+    #results { margin-top: 20px; display: grid; gap: 10px; }
+    .period-card { padding: 15px; border-radius: 15px; color: white; cursor: pointer; transition: 0.2s; position: relative; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .period-card.available { background: var(--green); }
+    .period-card.busy { background: var(--red); cursor: not-allowed; opacity: 0.9; }
+    .period-card.selected { background: var(--selected) !important; transform: scale(1.02); border: 2px solid white; box-shadow: 0 6px 15px rgba(0,0,0,0.2); }
+    .period-card.selected::after { content: "⭐"; position: absolute; right: 15px; top: 15px; font-size: 18px; }
+    button#submitBtn { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; margin-top: 20px; transition: 0.3s; font-size: 16px; }
+    button:disabled { background: #b2bec3; cursor: not-allowed; }
+    .loading { text-align: center; color: var(--primary); font-weight: 600; padding: 20px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>🏫 Reserva - Lab. Tecnologias EEB Pedro Maciel</h2>
+
+  <div class="input-group">
+    <label>👨‍🏫 Professor(a)</label>
+    <input type="text" id="professor" oninput="validate()" placeholder="Nome completo">
+  </div>
+
+  <div class="input-group">
+    <label>👥 Turma</label>
+    <input type="text" id="turma" oninput="validate()" placeholder="Ex: 2º Ano A">
+  </div>
+
+  <div class="input-group">
+    <label>📚 Habilidades BNCC</label>
+    <textarea id="habilidades" rows="2" placeholder="ex: EF02LP12 para Língua Portuguesa no 2º ano" oninput="validate()"></textarea>
+  </div>
+
+  <div class="input-group">
+    <label>📅 Data da Reserva</label>
+    <input type="date" id="data" onchange="fetchAvailability()">
+  </div>
+
+  <div id="results">
+    <p style="text-align:center; color:#636e72;">Escolha uma data para ver os horários 🕒</p>
+  </div>
+
+  <button id="submitBtn" disabled onclick="save()">🚀 Confirmar Agendamento</button>
+</div>
+
+<script>
+  let selectedPeriods = [];
+
+  function fetchAvailability() {
+    const dataVal = document.getElementById('data').value;
+    const resDiv = document.getElementById('results');
+    if (!dataVal) return;
+
+    resDiv.innerHTML = '<div class="loading">🔍 Consultando agenda da escola...</div>';
+    selectedPeriods = [];
+    validate();
+
+    google.script.run
+      .withSuccessHandler(renderPeriods)
+      .withFailureHandler(err => {
+        Swal.fire('Erro', 'Não foi possível carregar a agenda.', 'error');
+      })
+      .verificarDisponibilidade(dataVal);
+  }
+
+  function renderPeriods(periods) {
+    const resDiv = document.getElementById('results');
+    resDiv.innerHTML = '';
+
+    if (!periods || periods.length === 0) {
+      resDiv.innerHTML = '<p style="text-align:center; color:red;">⚠️ Agenda inacessível no momento.</p>';
+      return;
+    }
+
+    periods.forEach(p => {
+      const card = document.createElement('div');
+      card.className = `period-card ${p.disponivel ? 'available' : 'busy'}`;
+      
+      if (!p.disponivel) {
+        card.innerHTML = `<strong>🚫 ${p.nome}</strong><br><small>${p.horario}</small><br><span style="font-size:12px;">👤 Ocupado por: ${p.ocupadoPor}</span>`;
+      } else {
+        card.innerHTML = `<strong>✅ ${p.nome}</strong><br><small>${p.horario}</small><br><span style="font-size:12px;">✨ Disponível para você</span>`;
+        card.onclick = () => {
+          card.classList.toggle('selected');
+          if (selectedPeriods.includes(p.index)) {
+            selectedPeriods = selectedPeriods.filter(i => i !== p.index);
+          } else {
+            selectedPeriods.push(p.index);
+          }
+          validate();
+        };
+      }
+      resDiv.appendChild(card);
+    });
+  }
+
+  function validate() {
+    const p = document.getElementById('professor').value.trim();
+    const t = document.getElementById('turma').value.trim();
+    const h = document.getElementById('habilidades').value.trim();
+    const d = document.getElementById('data').value;
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = !(p && t && h && d && selectedPeriods.length > 0);
+  }
+
+  function save() {
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerText = "⏳ Gravando reserva...";
+
+    const dados = {
+      professor: document.getElementById('professor').value,
+      turma: document.getElementById('turma').value,
+      habilidades: document.getElementById('habilidades').value,
+      data: document.getElementById('data').value,
+      periodosSelecionados: selectedPeriods
+    };
+
+    google.script.run.withSuccessHandler((res) => {
+      if(res.sucesso) {
+        Swal.fire({
+          title: 'Sucesso!',
+          text: 'Sua reserva foi gravada na agenda.',
+          icon: 'success',
+          confirmButtonColor: '#0061ff'
+        }).then(() => location.reload());
+      } else {
+        Swal.fire('Erro', res.mensagem, 'error');
+        btn.disabled = false;
+        btn.innerText = "🚀 Confirmar Agendamento";
+      }
+    }).criarReserva(dados);
+  }
+</script>
+</body>
+</html>
